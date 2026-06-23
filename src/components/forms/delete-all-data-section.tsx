@@ -5,6 +5,7 @@ import { Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { reauthenticateWithPassword } from "@/lib/auth/reauthenticate";
 import { deleteAllUserData } from "@/lib/firestore/delete-all-user-data";
+import { isDeleteAllDataEnabled } from "@/lib/env";
 import { getFirestoreErrorMessage } from "@/lib/firebase-errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,10 @@ export function DeleteAllDataSection() {
   const { user } = useAuth();
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  if (!isDeleteAllDataEnabled()) {
+    return null;
+  }
 
   const handleDeleteAll = async () => {
     if (!user) {

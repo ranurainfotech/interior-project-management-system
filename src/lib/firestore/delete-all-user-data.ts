@@ -7,7 +7,8 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { COLLECTIONS } from "@/constants";
-import { getClientDb } from "@/lib/firebase";
+import { isDeleteAllDataEnabled } from "@/lib/env";
+import { getClientAuth, getClientDb } from "@/lib/firebase";
 
 const USER_COLLECTIONS = [
   COLLECTIONS.transactions,
@@ -41,9 +42,21 @@ async function hardDeleteUserDocs(
 
 export type DeleteAllUserDataResult = Record<string, number>;
 
+function assertDeleteAllDataAllowed(requestedUserId: string): void {
+  if (!isDeleteAllDataEnabled()) {
+    throw new Error("Delete all data is only available in local development.");
+  }
+
+  const currentUserId = getClientAuth().currentUser?.uid;
+  if (!currentUserId || currentUserId !== requestedUserId) {
+    throw new Error("You can only delete your own data.");
+  }
+}
+
 export async function deleteAllUserData(
   userId: string
 ): Promise<DeleteAllUserDataResult> {
+  assertDeleteAllDataAllowed(userId);
   const counts: DeleteAllUserDataResult = {};
 
   for (const collectionName of USER_COLLECTIONS) {
