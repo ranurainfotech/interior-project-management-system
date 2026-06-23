@@ -1,18 +1,12 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import { useAuth } from "@/lib/auth/auth-context";
-import { getTransactions } from "@/lib/firestore/transactions";
-import { getProjects } from "@/lib/firestore/projects";
-import { getParties } from "@/lib/firestore/parties";
+import { useEffect, useState, useMemo } from "react";
+import { useUserData } from "@/lib/data/user-data-context";
+import { getProjectSummary } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/format";
-import { TRANSACTION_TYPES } from "@/constants";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppScreen } from "@/components/layout/app-screen";
 import { PageBody } from "@/components/layout/section";
-import { PageLoading } from "@/components/layout/page-loading";
-import { Timeline, type TimelineItem } from "@/components/ui/timeline";
 import { FilterChips } from "@/components/ui/filter-chips";
 import {
   Select,
@@ -21,9 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getFirestoreErrorMessage } from "@/lib/firebase-errors";
-import { toast } from "sonner";
-import type { Transaction, Project, Party, TransactionType } from "@/types";
+import { Timeline, type TimelineItem } from "@/components/ui/timeline";
+import { TRANSACTION_TYPES } from "@/constants";
+import type { Transaction, Party, TransactionType } from "@/types";
 
 function txnTitle(txn: Transaction, partyMap: Map<string, Party>): string {
   switch (txn.transactionType) {
@@ -40,42 +34,24 @@ function txnTitle(txn: Transaction, partyMap: Map<string, Party>): string {
   }
 }
 
-function TransactionsContent() {
-  const { user } = useAuth();
-  const searchParams = useSearchParams();
-  const defaultProjectId = searchParams.get("projectId") ?? "all";
-
-  const [loading, setLoading] = useState(true);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [parties, setParties] = useState<Party[]>([]);
-  const [filterProject, setFilterProject] = useState(defaultProjectId);
+export default function TransactionsPage() {
+  const { projects, parties, transactions } = useUserData();
+  const [filterProject, setFilterProject] = useState("all");
   const [filterType, setFilterType] = useState<TransactionType | "all">("all");
 
-  const loadData = useCallback(async () => {
-    if (!user) return;
-    try {
-      const [txns, projs, pts] = await Promise.all([
-        getTransactions(user.uid),
-        getProjects(user.uid),
-        getParties(user.uid),
-      ]);
-      setTransactions(txns);
-      setProjects(projs);
-      setParties(pts);
-    } catch (error) {
-      toast.error(getFirestoreErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const params = new URLSearchParams(window.location.search);
+    setFilterProject(params.get("projectId") ?? "all");
+  }, []);
 
-  const partyMap = new Map(parties.map((p) => [p.id, p]));
-  const projectMap = new Map(projects.map((p) => [p.id, p]));
+  const partyMap = useMemo(
+    () => new Map(parties.map((p) => [p.id, p])),
+    [parties]
+  );
+  const projectMap = useMemo(
+    () => new Map(projects.map((p) => [p.id, p])),
+    [projects]
+  );
 
   const filtered = useMemo(
     () =>
@@ -93,15 +69,10 @@ function TransactionsContent() {
     id: txn.id,
     date: txn.date,
     title: txnTitle(txn, partyMap),
-    subtitle: [
-      projectMap.get(txn.projectId)?.name,
-      txn.note,
-    ]
+    subtitle: [projectMap.get(txn.projectId)?.name, txn.note]
       .filter(Boolean)
       .join(" · "),
   }));
-
-  if (loading) return <PageLoading fullScreen />;
 
   return (
     <AppScreen header={<AppHeader title="Transactions" />}>
@@ -143,13 +114,5 @@ function TransactionsContent() {
         </div>
       </PageBody>
     </AppScreen>
-  );
-}
-
-export default function TransactionsPage() {
-  return (
-    <Suspense fallback={<PageLoading fullScreen />}>
-      <TransactionsContent />
-    </Suspense>
   );
 }

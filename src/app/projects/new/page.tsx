@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useUserData } from "@/lib/data/user-data-context";
 import { createProject } from "@/lib/firestore/projects";
 import { createProjectContact } from "@/lib/firestore/contacts";
 import { AppHeader } from "@/components/layout/app-header";
@@ -33,6 +34,7 @@ interface ContactDraft {
 
 export default function NewProjectPage() {
   const { user } = useAuth();
+  const { refresh } = useUserData();
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -78,6 +80,7 @@ export default function NewProjectPage() {
           });
         }
       }
+      await refresh();
       toast.success("Project created");
       router.push(`/projects/${projectId}`);
     } catch {

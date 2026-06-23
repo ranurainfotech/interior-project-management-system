@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useUserData } from "@/lib/data/user-data-context";
 import { createProject } from "@/lib/firestore/projects";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ import { formInputClass } from "@/components/forms/form-layout";
 
 export function ProjectForm() {
   const { user } = useAuth();
+  const { refresh } = useUserData();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
@@ -40,6 +42,7 @@ export function ProjectForm() {
         status,
         startDate,
       });
+      await refresh();
       toast.success("Project created");
       router.push(`/projects/${id}`);
     } catch {

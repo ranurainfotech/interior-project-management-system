@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import {
   IndianRupee,
@@ -10,42 +10,16 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
-import { getProjects } from "@/lib/firestore/projects";
-import { getAllProjectParties } from "@/lib/firestore/project-parties";
-import { getTransactions } from "@/lib/firestore/transactions";
-import { getParties } from "@/lib/firestore/parties";
+import { useUserData } from "@/lib/data/user-data-context";
 import { getDashboardStats, getProjectSummary } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/format";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppScreen } from "@/components/layout/app-screen";
 import { MetricCell, PageBody, SectionTitle } from "@/components/layout/section";
-import { PageLoading } from "@/components/layout/page-loading";
 import { ProjectSummaryCard } from "@/components/cards/project-summary-card";
 import { Timeline, type TimelineItem } from "@/components/ui/timeline";
-import { getFirestoreErrorMessage } from "@/lib/firebase-errors";
-import { toast } from "sonner";
 import { typo } from "@/lib/design";
-import type { DashboardStats, Party, Project, Transaction } from "@/types";
-
-const emptyStats: DashboardStats = {
-  activeProjects: 0,
-  completedProjects: 0,
-  onHoldProjects: 0,
-  totalProjects: 0,
-  totalReceivable: 0,
-  totalPayable: 0,
-  labourDue: 0,
-  vendorDue: 0,
-  netPosition: 0,
-  totalRevenue: 0,
-  totalExpenses: 0,
-  labourPaid: 0,
-  materialPaid: 0,
-  otherExpenses: 0,
-  netProfit: 0,
-  totalContractValue: 0,
-  collectionRate: 0,
-};
+import type { Party, Project, Transaction } from "@/types";
 
 function greetingName(email?: string | null) {
   if (!email) return "there";
@@ -108,57 +82,41 @@ function GradientSection({
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<DashboardStats>(emptyStats);
-  const [projectSummaries, setProjectSummaries] = useState<
-    { project: Project; clientDue: number; profit: number }[]
-  >([]);
-  const [recentActivity, setRecentActivity] = useState<TimelineItem[]>([]);
+  const {
+    projects: projs,
+    projectParties,
+    transactions: txns,
+    parties: allParties,
+  } = useUserData();
 
-  useEffect(() => {
-    if (!user) return;
-    async function load() {
-      try {
-        const [projs, parties, txns, allParties] = await Promise.all([
-          getProjects(user!.uid),
-          getAllProjectParties(user!.uid),
-          getTransactions(user!.uid),
-          getParties(user!.uid),
-        ]);
+  const stats = useMemo(
+    () => getDashboardStats(projs, projectParties, txns),
+    [projs, projectParties, txns]
+  );
 
-        const dashboardStats = getDashboardStats(projs, parties, txns);
-        setStats(dashboardStats);
+  const projectSummaries = useMemo(
+    () =>
+      projs
+        .filter((p) => p.status === "active")
+        .map((project) => {
+          const pp = projectParties.filter((x) => x.projectId === project.id);
+          const t = txns.filter((x) => x.projectId === project.id);
+          const s = getProjectSummary(project, pp, t);
+          return { project, clientDue: s.clientDue, profit: s.profit };
+        }),
+    [projs, projectParties, txns]
+  );
 
-        const summaries = projs
-          .filter((p) => p.status === "active")
-          .map((project) => {
-            const pp = parties.filter((x) => x.projectId === project.id);
-            const t = txns.filter((x) => x.projectId === project.id);
-            const s = getProjectSummary(project, pp, t);
-            return { project, clientDue: s.clientDue, profit: s.profit };
-          });
-        setProjectSummaries(summaries);
-
-        const partyMap = new Map(allParties.map((p) => [p.id, p]));
-        const projectMap = new Map(projs.map((p) => [p.id, p]));
-        setRecentActivity(
-          txns.slice(0, 6).map((txn) => ({
-            id: txn.id,
-            date: txn.date,
-            title: txnTitle(txn, partyMap, projectMap),
-            subtitle: projectMap.get(txn.projectId)?.name,
-          }))
-        );
-      } catch (error) {
-        toast.error(getFirestoreErrorMessage(error));
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [user]);
-
-  if (loading) return <PageLoading fullScreen />;
+  const recentActivity = useMemo(() => {
+    const partyMap = new Map(allParties.map((p) => [p.id, p]));
+    const projectMap = new Map(projs.map((p) => [p.id, p]));
+    return txns.slice(0, 6).map((txn) => ({
+      id: txn.id,
+      date: txn.date,
+      title: txnTitle(txn, partyMap, projectMap),
+      subtitle: projectMap.get(txn.projectId)?.name,
+    }));
+  }, [txns, allParties, projs]);
 
   const collectionPct = Math.min(100, Math.round(stats.collectionRate));
 

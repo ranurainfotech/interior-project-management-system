@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useUserData } from "@/lib/data/user-data-context";
 import { reauthenticateWithPassword } from "@/lib/auth/reauthenticate";
 import { deleteAllUserData } from "@/lib/firestore/delete-all-user-data";
 import { isDeleteAllDataEnabled } from "@/lib/env";
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 
 export function DeleteAllDataSection() {
   const { user } = useAuth();
+  const { refresh } = useUserData();
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -42,6 +44,7 @@ export function DeleteAllDataSection() {
     try {
       await reauthenticateWithPassword(password);
       const counts = await deleteAllUserData(user.uid);
+      await refresh();
       const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
       setPassword("");
       toast.success(`Deleted ${total} records`);

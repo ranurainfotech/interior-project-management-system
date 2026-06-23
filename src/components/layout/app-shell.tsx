@@ -3,6 +3,7 @@
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
+import { UserDataProvider } from "@/lib/data/user-data-context";
 import { SidebarNav } from "./sidebar-nav";
 import { BottomNav } from "./bottom-nav";
 import { GlobalFab } from "./global-fab";
@@ -32,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <SidebarNav />
       <div className="relative flex min-h-screen min-w-0 flex-1 flex-col">
         <div className="app-content mx-auto w-full flex-1">
-          {children}
+          <UserDataProvider>{children}</UserDataProvider>
         </div>
         <BottomNav />
         <GlobalFab />

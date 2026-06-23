@@ -3,9 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Upload } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useUserData } from "@/lib/data/user-data-context";
 import { createTransaction } from "@/lib/firestore/transactions";
-import { getProjects } from "@/lib/firestore/projects";
-import { getParties } from "@/lib/firestore/parties";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,10 +41,14 @@ export function TransactionForm({
   onSuccess,
 }: TransactionFormProps) {
   const { user } = useAuth();
+  const { projects: cachedProjects, parties: cachedParties, refresh } =
+    useUserData();
   const formRef = useRef<HTMLFormElement>(null);
   const [loading, setLoading] = useState(false);
-  const [projects, setProjects] = useState<Project[]>(projectsProp ?? []);
-  const [parties, setParties] = useState<Party[]>(partiesProp ?? []);
+  const [projects, setProjects] = useState<Project[]>(
+    projectsProp ?? cachedProjects
+  );
+  const [parties, setParties] = useState<Party[]>(partiesProp ?? cachedParties);
   const [projectId, setProjectId] = useState(defaultProjectId ?? "");
   const [transactionType, setTransactionType] = useState<TransactionType>(
     defaultType ?? "client_payment"
@@ -56,14 +59,14 @@ export function TransactionForm({
   const [note, setNote] = useState("");
 
   useEffect(() => {
-    if (!user || (projectsProp && partiesProp)) return;
-    Promise.all([getProjects(user.uid), getParties(user.uid)]).then(
-      ([p, pts]) => {
-        setProjects(p);
-        setParties(pts);
-      }
-    );
-  }, [user, projectsProp, partiesProp]);
+    if (projectsProp) setProjects(projectsProp);
+    else setProjects(cachedProjects);
+  }, [projectsProp, cachedProjects]);
+
+  useEffect(() => {
+    if (partiesProp) setParties(partiesProp);
+    else setParties(cachedParties);
+  }, [partiesProp, cachedParties]);
 
   useEffect(() => {
     if (defaultProjectId) setProjectId(defaultProjectId);
@@ -112,6 +115,7 @@ export function TransactionForm({
         date,
         note: note.trim() || undefined,
       });
+      await refresh();
       toast.success("Transaction recorded");
       onSuccess?.();
     } catch (error) {

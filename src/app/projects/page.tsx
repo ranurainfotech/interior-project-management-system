@@ -1,72 +1,47 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { useAuth } from "@/lib/auth/auth-context";
-import { getProjects } from "@/lib/firestore/projects";
-import { getAllProjectParties } from "@/lib/firestore/project-parties";
-import { getTransactions } from "@/lib/firestore/transactions";
+import { useUserData } from "@/lib/data/user-data-context";
 import { getProjectSummary } from "@/lib/calculations";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppScreen } from "@/components/layout/app-screen";
 import { PageBody } from "@/components/layout/section";
-import { PageLoading } from "@/components/layout/page-loading";
 import { ProjectSummaryCard } from "@/components/cards/project-summary-card";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { Input } from "@/components/ui/input";
-import { getFirestoreErrorMessage } from "@/lib/firebase-errors";
-import { toast } from "sonner";
-import type { ProjectStatus, ProjectWithSummary } from "@/types";
+import type { ProjectStatus } from "@/types";
 
 type StatusFilter = "all" | ProjectStatus;
 
 export default function ProjectsPage() {
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [projects, setProjects] = useState<ProjectWithSummary[]>([]);
+  const { projects, projectParties, transactions } = useUserData();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
-  useEffect(() => {
-    if (!user) return;
-    async function load() {
-      try {
-        const [projs, parties, txns] = await Promise.all([
-          getProjects(user!.uid),
-          getAllProjectParties(user!.uid),
-          getTransactions(user!.uid),
-        ]);
-        setProjects(
-          projs.map((project) => {
-            const pp = parties.filter((p) => p.projectId === project.id);
-            const t = txns.filter((txn) => txn.projectId === project.id);
-            const summary = getProjectSummary(project, pp, t);
-            return {
-              ...project,
-              clientDue: summary.clientDue,
-              profit: summary.profit,
-            };
-          })
-        );
-      } catch (error) {
-        toast.error(getFirestoreErrorMessage(error));
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [user]);
+  const projectsWithSummary = useMemo(
+    () =>
+      projects.map((project) => {
+        const pp = projectParties.filter((p) => p.projectId === project.id);
+        const t = transactions.filter((txn) => txn.projectId === project.id);
+        const summary = getProjectSummary(project, pp, t);
+        return {
+          ...project,
+          clientDue: summary.clientDue,
+          profit: summary.profit,
+        };
+      }),
+    [projects, projectParties, transactions]
+  );
 
   const filtered = useMemo(() => {
-    return projects.filter((p) => {
+    return projectsWithSummary.filter((p) => {
       if (statusFilter !== "all" && p.status !== statusFilter) return false;
       if (search && !p.name.toLowerCase().includes(search.toLowerCase()))
         return false;
       return true;
     });
-  }, [projects, search, statusFilter]);
-
-  if (loading) return <PageLoading fullScreen />;
+  }, [projectsWithSummary, search, statusFilter]);
 
   return (
     <AppScreen header={<AppHeader title="Projects" />}>
@@ -88,28 +63,22 @@ export default function ProjectsPage() {
             { value: "all", label: "All" },
             { value: "active", label: "Active" },
             { value: "completed", label: "Completed" },
-            { value: "on_hold", label: "On Hold" },
+            { value: "on_hold", label: "On hold" },
           ]}
         />
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.length === 0 ? (
-            <p className="col-span-full py-8 text-center text-sm text-subtext">
-              No projects found
-            </p>
-          ) : (
-            filtered.map((project) => (
-              <ProjectSummaryCard
-                key={project.id}
-                id={project.id}
-                name={project.name}
-                status={project.status}
-                contractAmount={project.contractAmount}
-                clientDue={project.clientDue}
-                profit={project.profit}
-              />
-            ))
-          )}
+        <div className="flex flex-col gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-3 sm:gap-4">
+          {filtered.map((project) => (
+            <ProjectSummaryCard
+              key={project.id}
+              id={project.id}
+              name={project.name}
+              status={project.status}
+              contractAmount={project.contractAmount}
+              clientDue={project.clientDue}
+              profit={project.profit}
+            />
+          ))}
         </div>
       </PageBody>
     </AppScreen>

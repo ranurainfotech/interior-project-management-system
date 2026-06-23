@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useUserData } from "@/lib/data/user-data-context";
 import { createParty } from "@/lib/firestore/parties";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,7 @@ const fieldClass = "h-12 rounded-2xl border-border bg-card shadow-card";
 
 export function PartyForm({ defaultType }: { defaultType?: PartyType }) {
   const { user } = useAuth();
+  const { refresh } = useUserData();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [partyType, setPartyType] = useState<PartyType>(defaultType ?? "labour");
@@ -52,6 +54,7 @@ export function PartyForm({ defaultType }: { defaultType?: PartyType }) {
           ? { skills: selectedItems }
           : { categories: selectedItems }),
       });
+      await refresh();
       toast.success("Party created");
       router.push(`/parties/${id}`);
     } catch {

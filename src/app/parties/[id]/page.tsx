@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Phone, MessageCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useUserData } from "@/lib/data/user-data-context";
 import { getParty, softDeleteParty } from "@/lib/firestore/parties";
 import { getPartyProjectHistory } from "@/lib/firestore/project-parties";
 import { getPartyTransactions } from "@/lib/firestore/transactions";
@@ -35,6 +36,7 @@ function whatsappUrl(phone: string) {
 export default function PartyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { refresh } = useUserData();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [party, setParty] = useState<Awaited<ReturnType<typeof getParty>>>(null);
@@ -100,6 +102,7 @@ export default function PartyDetailPage() {
           onClick={async () => {
             if (!confirm("Delete this party?")) return;
             await softDeleteParty(id);
+            await refresh();
             toast.success("Party deleted");
             router.push("/parties");
           }}

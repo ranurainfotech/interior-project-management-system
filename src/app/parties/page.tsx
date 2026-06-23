@@ -1,60 +1,37 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
-import { useAuth } from "@/lib/auth/auth-context";
-import { getParties } from "@/lib/firestore/parties";
-import { getAllProjectParties } from "@/lib/firestore/project-parties";
-import { getTransactions } from "@/lib/firestore/transactions";
+import { useUserData } from "@/lib/data/user-data-context";
 import { getPartyTotals } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/format";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppScreen } from "@/components/layout/app-screen";
 import { PageBody } from "@/components/layout/section";
-import { PageLoading } from "@/components/layout/page-loading";
 import { SegmentControl } from "@/components/ui/segment-control";
 import { Avatar } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { getFirestoreErrorMessage } from "@/lib/firebase-errors";
-import { toast } from "sonner";
 import { layout, typo } from "@/lib/design";
 import type { PartyType, PartyWithStats } from "@/types";
 
 type PartyFilter = "all" | PartyType;
 
 export default function PartiesPage() {
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [parties, setParties] = useState<PartyWithStats[]>([]);
+  const { parties: partyList, projectParties, transactions } = useUserData();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<PartyFilter>("all");
 
-  useEffect(() => {
-    if (!user) return;
-    async function load() {
-      try {
-        const [pts, assignments, txns] = await Promise.all([
-          getParties(user!.uid),
-          getAllProjectParties(user!.uid),
-          getTransactions(user!.uid),
-        ]);
-        setParties(
-          pts.map((party) => {
-            const history = assignments.filter((a) => a.partyId === party.id);
-            const totals = getPartyTotals(party.id, history, txns);
-            const projectCount = new Set(history.map((h) => h.projectId)).size;
-            return { ...party, ...totals, projectCount };
-          })
-        );
-      } catch (error) {
-        toast.error(getFirestoreErrorMessage(error));
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [user]);
+  const parties = useMemo<PartyWithStats[]>(
+    () =>
+      partyList.map((party) => {
+        const history = projectParties.filter((a) => a.partyId === party.id);
+        const totals = getPartyTotals(party.id, history, transactions);
+        const projectCount = new Set(history.map((h) => h.projectId)).size;
+        return { ...party, ...totals, projectCount };
+      }),
+    [partyList, projectParties, transactions]
+  );
 
   const filtered = useMemo(() => {
     return parties.filter((p) => {
@@ -64,8 +41,6 @@ export default function PartiesPage() {
       return true;
     });
   }, [parties, search, filter]);
-
-  if (loading) return <PageLoading fullScreen />;
 
   return (
     <AppScreen header={<AppHeader title="Parties" />}>

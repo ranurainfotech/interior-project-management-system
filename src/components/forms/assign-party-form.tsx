@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useUserData } from "@/lib/data/user-data-context";
 import { assignPartyToProject } from "@/lib/firestore/project-parties";
 import { Input } from "@/components/ui/input";
 import {
@@ -38,6 +39,7 @@ export function AssignPartyForm({
   onSuccess,
 }: AssignPartyFormProps) {
   const { user } = useAuth();
+  const { refresh } = useUserData();
   const [loading, setLoading] = useState(false);
   const [partyId, setPartyId] = useState("");
   const [skillOrCategory, setSkillOrCategory] = useState("");
@@ -83,6 +85,7 @@ export function AssignPartyForm({
           : { categoryUsed: skillOrCategory }),
         agreedAmount: Number(agreedAmount),
       });
+      await refresh();
       toast.success(`${isLabour ? "Labour" : "Vendor"} assigned`);
       setPartyId("");
       setSkillOrCategory("");

@@ -14,6 +14,7 @@ import {
   Receipt,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useUserData } from "@/lib/data/user-data-context";
 import { getProject, updateProject, softDeleteProject } from "@/lib/firestore/projects";
 import { getProjectContacts } from "@/lib/firestore/contacts";
 import { getProjectParties, softDeleteProjectParty } from "@/lib/firestore/project-parties";
@@ -72,6 +73,7 @@ function whatsappUrl(phone: string) {
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { refresh } = useUserData();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<Project | null>(null);
@@ -115,6 +117,7 @@ export default function ProjectDetailPage() {
     if (!project || !confirm("Delete this project?")) return;
     try {
       await softDeleteProject(project.id);
+      await refresh();
       toast.success("Project deleted");
       router.push("/projects");
     } catch {
@@ -177,6 +180,7 @@ export default function ProjectDetailPage() {
         <DropdownMenuItem
           onClick={async () => {
             await updateProject(project.id, { status: "on_hold" });
+            await refresh();
             toast.success("Project archived");
             loadData();
           }}
@@ -448,6 +452,7 @@ export default function ProjectDetailPage() {
                         onEdit={() => toast.info("Edit assignment from party detail")}
                         onDelete={async () => {
                           await softDeleteProjectParty(summary.projectParty.id);
+                          await refresh();
                           loadData();
                         }}
                       >
@@ -537,6 +542,7 @@ export default function ProjectDetailPage() {
                         onEdit={() => toast.info("Edit assignment from party detail")}
                         onDelete={async () => {
                           await softDeleteProjectParty(summary.projectParty.id);
+                          await refresh();
                           loadData();
                         }}
                       >
