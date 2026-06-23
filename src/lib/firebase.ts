@@ -15,14 +15,39 @@ const firebaseConfig = {
 
 let app: FirebaseApp | undefined;
 
+const REQUIRED_FIREBASE_ENV_KEYS = [
+  "NEXT_PUBLIC_FIREBASE_API_KEY",
+  "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+  "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+  "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+  "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+  "NEXT_PUBLIC_FIREBASE_APP_ID",
+] as const;
+
+export function getMissingFirebaseEnvKeys(): string[] {
+  const values: Record<(typeof REQUIRED_FIREBASE_ENV_KEYS)[number], string | undefined> = {
+    NEXT_PUBLIC_FIREBASE_API_KEY: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:
+      process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:
+      process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    NEXT_PUBLIC_FIREBASE_APP_ID: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  };
+
+  return REQUIRED_FIREBASE_ENV_KEYS.filter((key) => !values[key]?.trim());
+}
+
 export function isFirebaseConfigured(): boolean {
-  return Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
+  return getMissingFirebaseEnvKeys().length === 0;
 }
 
 export function getFirebaseApp(): FirebaseApp {
   if (!isFirebaseConfigured()) {
+    const missing = getMissingFirebaseEnvKeys().join(", ");
     throw new Error(
-      "Firebase is not configured. Add NEXT_PUBLIC_FIREBASE_* variables in Vercel and redeploy."
+      `Firebase is not configured. Missing: ${missing}. For local dev, add them to .env.local and restart npm run dev.`
     );
   }
   if (!app) {

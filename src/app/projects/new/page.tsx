@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useUserData } from "@/lib/data/user-data-context";
+import { useSubmitGuard } from "@/lib/hooks/use-submit-guard";
 import { createProject } from "@/lib/firestore/projects";
 import { createProjectContact } from "@/lib/firestore/contacts";
 import { AppHeader } from "@/components/layout/app-header";
@@ -11,6 +12,7 @@ import { AppScreen } from "@/components/layout/app-screen";
 import { Button } from "@/components/ui/button";
 import { StickySave } from "@/components/ui/sticky-save";
 import { Input } from "@/components/ui/input";
+import { AmountInput } from "@/components/ui/amount-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -22,6 +24,8 @@ import {
 } from "@/components/ui/select";
 import { PROJECT_STATUSES } from "@/constants";
 import { toDateInputValue } from "@/lib/format";
+import { parseOptionalAmount } from "@/lib/forms/defaults";
+import { getFirestoreErrorMessage } from "@/lib/firebase-errors";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import type { ProjectStatus } from "@/types";
@@ -32,9 +36,16 @@ interface ContactDraft {
   notes: string;
 }
 
+function hasContactContent(contact: ContactDraft): boolean {
+  return Boolean(
+    contact.name.trim() || contact.phone.trim() || contact.notes.trim()
+  );
+}
+
 export default function NewProjectPage() {
   const { user } = useAuth();
   const { refresh } = useUserData();
+  const { runGuarded, lock, release } = useSubmitGuard();
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -60,37 +71,69 @@ export default function NewProjectPage() {
     setContacts((c) => c.filter((_, idx) => idx !== i));
   };
 
-  const handleSave = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const projectId = await createProject(user.uid, {
-        name,
-        contractAmount: Number(contractAmount),
-        status,
-        startDate,
-      });
-      for (const c of contacts) {
-        if (c.name.trim() && c.phone.trim()) {
-          await createProjectContact(user.uid, {
-            projectId,
-            name: c.name.trim(),
-            phone: c.phone.trim(),
-            notes: c.notes.trim() || undefined,
-          });
+  const handleSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!user || loading) return;
+
+    await runGuarded(async () => {
+      setLoading(true);
+      let projectId: string | undefined;
+
+      try {
+        projectId = await createProject(user.uid, {
+          name: name.trim() || "Untitled project",
+          contractAmount: parseOptionalAmount(contractAmount),
+          status,
+          startDate: startDate || toDateInputValue(),
+        });
+
+        const contactsToSave = contacts.filter(hasContactContent);
+        let contactsFailed = 0;
+
+        for (const contact of contactsToSave) {
+          try {
+            await createProjectContact(user.uid, {
+              projectId,
+              name: contact.name.trim() || "Contact",
+              phone: contact.phone.trim() || "N/A",
+              notes: contact.notes.trim() || undefined,
+            });
+          } catch (error) {
+            contactsFailed += 1;
+            console.error("Failed to save contact", error);
+          }
         }
+
+        void refresh({ silent: true });
+
+        if (contactsFailed > 0) {
+          toast.warning(
+            "Project saved. Some contacts could not be added — you can add them from the project page."
+          );
+        } else {
+          toast.success("Project created");
+        }
+
+        lock();
+        router.push(`/projects/${projectId}`);
+      } catch (error) {
+        if (projectId) {
+          toast.warning(
+            "Project was saved but something went wrong. Opening the project…"
+          );
+          void refresh({ silent: true });
+          lock();
+          router.push(`/projects/${projectId}`);
+          return;
+        }
+        toast.error(getFirestoreErrorMessage(error));
+        release();
+        setLoading(false);
       }
-      await refresh();
-      toast.success("Project created");
-      router.push(`/projects/${projectId}`);
-    } catch {
-      toast.error("Failed to create project");
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
-const fieldClass = "h-12 rounded-2xl border-border bg-card shadow-card";
+  const fieldClass = "h-12 rounded-2xl border-border bg-card shadow-card";
 
   return (
     <AppScreen
@@ -116,20 +159,21 @@ const fieldClass = "h-12 rounded-2xl border-border bg-card shadow-card";
               className={fieldClass}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              required
               placeholder="Patel Residence"
             />
           </div>
           <div className="space-y-2">
-            <Label>Contract amount (₹)</Label>
-            <Input
-              type="number"
+            <Label>Client estimate</Label>
+            <AmountInput
               className={fieldClass}
               value={contractAmount}
-              onChange={(e) => setContractAmount(e.target.value)}
-              required
-              min={0}
+              onValueChange={setContractAmount}
+              placeholder="Leave empty if unknown"
             />
+            <p className="text-xs text-subtext">
+              Update anytime as scope changes. Cash flow is tracked from
+              payments.
+            </p>
           </div>
           <div className="space-y-2">
             <Label>Start date</Label>
@@ -138,7 +182,6 @@ const fieldClass = "h-12 rounded-2xl border-border bg-card shadow-card";
               className={fieldClass}
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              required
             />
           </div>
           <div className="space-y-2">
@@ -162,9 +205,22 @@ const fieldClass = "h-12 rounded-2xl border-border bg-card shadow-card";
           <Button type="submit" className="h-14 w-full rounded-2xl text-base">
             Continue
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 w-full rounded-2xl"
+            disabled={loading}
+            onClick={() => void handleSave()}
+          >
+            Save without contacts
+          </Button>
         </form>
       ) : (
-        <div className="space-y-4 pb-32">
+        <form
+          id="project-save-form"
+          className="space-y-4 pb-32"
+          onSubmit={handleSave}
+        >
           {contacts.map((contact, i) => (
             <div key={i} className="space-y-3 rounded-[24px] bg-card p-4 shadow-card">
               <div className="flex items-center justify-between">
@@ -193,7 +249,7 @@ const fieldClass = "h-12 rounded-2xl border-border bg-card shadow-card";
                 onChange={(e) => updateContact(i, "phone", e.target.value)}
               />
               <Textarea
-                placeholder="Notes (optional)"
+                placeholder="Notes"
                 rows={2}
                 className="rounded-2xl border-border bg-card"
                 value={contact.notes}
@@ -219,12 +275,11 @@ const fieldClass = "h-12 rounded-2xl border-border bg-card shadow-card";
             Back
           </Button>
           <StickySave
-            type="button"
+            form="project-save-form"
             loading={loading}
             label="Save project"
-            onClick={handleSave}
           />
-        </div>
+        </form>
       )}
     </AppScreen>
   );

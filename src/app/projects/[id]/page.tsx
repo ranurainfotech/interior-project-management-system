@@ -15,12 +15,12 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useUserData } from "@/lib/data/user-data-context";
-import { getProject, updateProject, softDeleteProject } from "@/lib/firestore/projects";
+import { getProject, softDeleteProject } from "@/lib/firestore/projects";
 import { getProjectContacts } from "@/lib/firestore/contacts";
 import { getProjectParties, softDeleteProjectParty } from "@/lib/firestore/project-parties";
 import { getProjectTransactions } from "@/lib/firestore/transactions";
 import { getParties } from "@/lib/firestore/parties";
-import { getProjectSummary, getAssignmentSummaries, getAssignmentTransactions } from "@/lib/calculations";
+import { getProjectSummary, getAssignmentSummaries, getAssignmentTransactions, hasBudget } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/format";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppScreen } from "@/components/layout/app-screen";
@@ -30,10 +30,15 @@ import { SlidingTabs } from "@/components/ui/sliding-tabs";
 import { AssignmentTransactionsSheet } from "@/components/cards/assignment-transactions-sheet";
 import { Avatar } from "@/components/ui/avatar";
 import { SwipeRow } from "@/components/ui/swipe-row";
-import { Timeline, type TimelineItem } from "@/components/ui/timeline";
+import { TransactionTimeline } from "@/components/cards/transaction-timeline";
 import { AssignPartyDialog } from "@/components/forms/assign-party-dialog";
 import { ContactDialog } from "@/components/forms/contact-dialog";
+import { EditProjectEstimateDialog } from "@/components/forms/edit-project-estimate-dialog";
+import { EditProjectStatusDialog } from "@/components/forms/edit-project-status-dialog";
+import { ProjectStatusBadge } from "@/components/cards/project-status-badge";
+import { EditAssignmentBudgetDialog } from "@/components/forms/edit-assignment-budget-dialog";
 import { ProjectAnalytics } from "@/components/analytics/project-analytics";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,7 +48,7 @@ import {
 import { getFirestoreErrorMessage } from "@/lib/firebase-errors";
 import { toast } from "sonner";
 import { layout, typo } from "@/lib/design";
-import type { Project, ProjectContact, ProjectParty, Transaction, Party } from "@/types";
+import type { Project, ProjectContact, ProjectParty, Transaction, Party, PartyAssignmentSummary } from "@/types";
 
 type ProjectDetailTab = "overview" | "contacts" | "labour" | "material";
 
@@ -54,8 +59,37 @@ type SelectedAssignment = {
   roleLabel: string;
   agreedAmount: number;
   paidAmount: number;
-  dueAmount: number;
+  dueAmount: number | null;
+  overpaidAmount: number;
+  hasBudget: boolean;
 };
+
+function AssignmentAmounts({ summary }: { summary: PartyAssignmentSummary }) {
+  return (
+    <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-sm leading-snug">
+      <span className="text-subtext">Paid </span>
+      <span className="font-semibold tabular-nums text-success">
+        {formatCurrency(summary.paidAmount)}
+      </span>
+      {summary.hasBudget && summary.dueAmount !== null ? (
+        <>
+          <span className="text-subtext">· Due </span>
+          <span className="font-semibold tabular-nums text-warning">
+            {formatCurrency(summary.dueAmount)}
+          </span>
+        </>
+      ) : null}
+      {summary.overpaidAmount > 0 ? (
+        <>
+          <span className="text-subtext">· Overpaid </span>
+          <span className="font-semibold tabular-nums text-danger">
+            {formatCurrency(summary.overpaidAmount)}
+          </span>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 const tabMotion = {
   initial: { opacity: 0, x: 16 },
@@ -114,14 +148,18 @@ export default function ProjectDetailPage() {
   }, [loadData]);
 
   const handleDelete = async () => {
-    if (!project || !confirm("Delete this project?")) return;
+    if (!project || !user) return;
+    const confirmed = window.confirm(
+      `Delete "${project.name}"? Its transactions, contacts, and assignments will also be removed.`
+    );
+    if (!confirmed) return;
     try {
-      await softDeleteProject(project.id);
+      await softDeleteProject(user.uid, project.id);
       await refresh();
       toast.success("Project deleted");
       router.push("/projects");
-    } catch {
-      toast.error("Failed to delete");
+    } catch (error) {
+      toast.error(getFirestoreErrorMessage(error));
     }
   };
 
@@ -147,25 +185,12 @@ export default function ProjectDetailPage() {
     transactions,
     "material"
   );
-  const partyMap = new Map(parties.map((p) => [p.id, p]));
-
   const visibleLabour = showAllLabour
     ? labourSummaries
     : labourSummaries.slice(0, 5);
   const visibleMaterial = showAllMaterial
     ? vendorSummaries
     : vendorSummaries.slice(0, 5);
-
-  const timelineItems: TimelineItem[] = transactions.map((txn) => {
-    let title = formatCurrency(txn.amount);
-    if (txn.transactionType === "client_payment")
-      title = `Received ${formatCurrency(txn.amount)} from Client`;
-    else if (txn.transactionType === "expense")
-      title = `Expense ${formatCurrency(txn.amount)}`;
-    else if (txn.partyId)
-      title = `Paid ${formatCurrency(txn.amount)} to ${partyMap.get(txn.partyId)?.name ?? "party"}`;
-    return { id: txn.id, date: txn.date, title, subtitle: txn.note };
-  });
 
   const menu = (
     <DropdownMenu>
@@ -177,16 +202,6 @@ export default function ProjectDetailPage() {
         }
       />
       <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          onClick={async () => {
-            await updateProject(project.id, { status: "on_hold" });
-            await refresh();
-            toast.success("Project archived");
-            loadData();
-          }}
-        >
-          Archive project
-        </DropdownMenuItem>
         <DropdownMenuItem variant="destructive" onClick={handleDelete}>
           Delete project
         </DropdownMenuItem>
@@ -212,12 +227,7 @@ export default function ProjectDetailPage() {
 
   const openAssignment = (
     type: "labour" | "material",
-    summary: {
-      projectParty: ProjectParty;
-      party: Party;
-      paidAmount: number;
-      dueAmount: number;
-    }
+    summary: PartyAssignmentSummary
   ) => {
     setSelectedAssignment({
       type,
@@ -230,6 +240,8 @@ export default function ProjectDetailPage() {
       agreedAmount: summary.projectParty.agreedAmount,
       paidAmount: summary.paidAmount,
       dueAmount: summary.dueAmount,
+      overpaidAmount: summary.overpaidAmount,
+      hasBudget: summary.hasBudget,
     });
   };
 
@@ -255,13 +267,7 @@ export default function ProjectDetailPage() {
           <motion.div key={activeTab} {...tabMotion}>
             {activeTab === "overview" && (
               <div className="flex flex-col gap-6">
-                <div className="grid min-h-[200px] grid-cols-2 gap-x-4 gap-y-6 rounded-[24px] bg-card p-5 shadow-card sm:grid-cols-4 sm:gap-y-4">
-                  <div className="flex flex-col justify-center">
-                    <p className={layout.label}>Contract Amount</p>
-                    <p className={`mt-2 ${layout.valueLg}`}>
-                      {formatCurrency(project.contractAmount)}
-                    </p>
-                  </div>
+                <div className="grid min-h-[200px] grid-cols-2 gap-x-4 gap-y-6 rounded-[24px] bg-card p-5 shadow-card sm:grid-cols-3 sm:gap-y-4">
                   <div className="flex flex-col justify-center">
                     <p className={layout.label}>Received</p>
                     <p className="mt-2 text-xl font-bold tabular-nums leading-tight text-success">
@@ -269,13 +275,13 @@ export default function ProjectDetailPage() {
                     </p>
                   </div>
                   <div className="flex flex-col justify-center">
-                    <p className={layout.label}>Client Due</p>
-                    <p className="mt-2 text-xl font-bold tabular-nums leading-tight text-warning">
-                      {formatCurrency(summary.clientDue)}
+                    <p className={layout.label}>Paid out</p>
+                    <p className="mt-2 text-xl font-bold tabular-nums leading-tight">
+                      {formatCurrency(summary.paidOut)}
                     </p>
                   </div>
                   <div className="flex flex-col justify-center">
-                    <p className={layout.label}>Profit</p>
+                    <p className={layout.label}>Net on project</p>
                     <p
                       className={`mt-2 text-xl font-bold tabular-nums leading-tight ${
                         summary.profit >= 0 ? "text-success" : "text-danger"
@@ -286,6 +292,85 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
+                <div className="flex items-center justify-between gap-3 rounded-[24px] bg-card p-5 shadow-card">
+                  <div>
+                    <p className={layout.label}>Status</p>
+                    <div className="mt-2">
+                      <ProjectStatusBadge status={project.status} />
+                    </div>
+                  </div>
+                  <EditProjectStatusDialog
+                    projectId={project.id}
+                    currentStatus={project.status}
+                    onSuccess={() => {
+                      refresh();
+                      loadData();
+                    }}
+                    trigger={
+                      <button
+                        type="button"
+                        className="text-sm font-medium text-primary"
+                      >
+                        Change
+                      </button>
+                    }
+                  />
+                </div>
+
+                <div className="flex flex-col gap-3 rounded-[24px] bg-card p-5 shadow-card">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className={layout.label}>Client estimate</p>
+                      <p className={`mt-2 ${layout.valueLg}`}>
+                        {hasBudget(project.contractAmount)
+                          ? formatCurrency(project.contractAmount)
+                          : "Not set"}
+                      </p>
+                    </div>
+                    <EditProjectEstimateDialog
+                      projectId={project.id}
+                      currentEstimate={project.contractAmount}
+                      onSuccess={() => {
+                        refresh();
+                        loadData();
+                      }}
+                      trigger={
+                        <button
+                          type="button"
+                          className="text-sm font-medium text-primary"
+                        >
+                          Edit
+                        </button>
+                      }
+                    />
+                  </div>
+                  {summary.hasClientEstimate ? (
+                    <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
+                      <div>
+                        <p className={layout.label}>Client pending</p>
+                        <p className="mt-1 text-lg font-bold tabular-nums text-warning">
+                          {summary.clientDue !== null
+                            ? formatCurrency(summary.clientDue)
+                            : "—"}
+                        </p>
+                      </div>
+                      {summary.clientOverpaid > 0 ? (
+                        <div>
+                          <p className={layout.label}>Client overpaid</p>
+                          <p className="mt-1 text-lg font-bold tabular-nums text-danger">
+                            {formatCurrency(summary.clientOverpaid)}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className={`border-t border-border pt-4 ${typo("caption")}`}>
+                      Add an estimate when you know the scope. Payments are always
+                      tracked from transactions.
+                    </p>
+                  )}
+                </div>
+
                 <ProjectAnalytics
                   project={project}
                   projectParties={projectParties}
@@ -293,6 +378,8 @@ export default function ProjectDetailPage() {
                   transactions={transactions}
                   received={summary.clientReceived}
                   pending={summary.clientDue}
+                  clientOverpaid={summary.clientOverpaid}
+                  hasClientEstimate={summary.hasClientEstimate}
                 />
 
                 <section className="flex flex-col gap-4">
@@ -332,7 +419,30 @@ export default function ProjectDetailPage() {
 
                 <section className="flex flex-col gap-4">
                   <SectionTitle>Transactions</SectionTitle>
-                  <Timeline items={timelineItems} emptyMessage="No transactions yet" />
+                  <TransactionTimeline
+                    transactions={transactions}
+                    parties={parties}
+                    projects={[project]}
+                    onUpdated={loadData}
+                    subtitleForTransaction={(txn) => txn.note}
+                    emptyMessage="No transactions yet"
+                  />
+                </section>
+
+                <section className="rounded-[24px] border border-danger/25 bg-danger/5 p-4">
+                  <p className="text-sm font-semibold text-danger">Delete project</p>
+                  <p className={`mt-2 ${typo("caption")}`}>
+                    Remove this project and all its transactions, contacts, and
+                    labour/material assignments from your records.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="mt-4 h-12 w-full rounded-2xl font-semibold"
+                    onClick={handleDelete}
+                  >
+                    Delete project
+                  </Button>
                 </section>
               </div>
             )}
@@ -425,8 +535,8 @@ export default function ProjectDetailPage() {
                     className={`${layout.cardSm} flex flex-col items-center gap-3 py-8 text-center`}
                   >
                     <p className="text-sm text-subtext">
-                      No labour on this project yet. Assign an existing labour party
-                      and set the agreed amount.
+                      No labour on this project yet. Assign a labour party and
+                      optionally set a budget estimate.
                     </p>
                     <AssignPartyDialog
                       projectId={id}
@@ -449,7 +559,6 @@ export default function ProjectDetailPage() {
                       <SwipeRow
                         key={summary.projectParty.id}
                         onClick={() => openAssignment("labour", summary)}
-                        onEdit={() => toast.info("Edit assignment from party detail")}
                         onDelete={async () => {
                           await softDeleteProjectParty(summary.projectParty.id);
                           await refresh();
@@ -458,23 +567,36 @@ export default function ProjectDetailPage() {
                       >
                         <Avatar name={summary.party.name} size="sm" />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold leading-tight">
-                            {summary.party.name}
-                          </p>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="truncate font-semibold leading-tight">
+                              {summary.party.name}
+                            </p>
+                            <EditAssignmentBudgetDialog
+                              assignmentId={summary.projectParty.id}
+                              currentBudget={summary.projectParty.agreedAmount}
+                              partyName={summary.party.name}
+                              onSuccess={() => {
+                                refresh();
+                                loadData();
+                              }}
+                              trigger={
+                                <button
+                                  type="button"
+                                  className="shrink-0 text-xs font-medium text-primary"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  Budget
+                                </button>
+                              }
+                            />
+                          </div>
                           <p className={typo("caption")}>
                             {summary.projectParty.skillUsed ?? "Labour"}
+                            {summary.hasBudget
+                              ? ` · ${formatCurrency(summary.projectParty.agreedAmount)} budget`
+                              : ""}
                           </p>
-                          <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-sm leading-snug">
-                            <span className="text-subtext">Due </span>
-                            <span className="font-semibold text-warning tabular-nums">
-                              {formatCurrency(summary.dueAmount)}
-                            </span>
-                            <span className="mx-2 text-subtext">·</span>
-                            <span className="text-subtext">Paid </span>
-                            <span className="font-semibold text-success tabular-nums">
-                              {formatCurrency(summary.paidAmount)}
-                            </span>
-                          </div>
+                          <AssignmentAmounts summary={summary} />
                         </div>
                       </SwipeRow>
                     ))}
@@ -515,8 +637,8 @@ export default function ProjectDetailPage() {
                     className={`${layout.cardSm} flex flex-col items-center gap-3 py-8 text-center`}
                   >
                     <p className="text-sm text-subtext">
-                      No vendors on this project yet. Assign an existing material
-                      vendor and set the agreed amount.
+                      No vendors on this project yet. Assign a material vendor and
+                      optionally set a budget estimate.
                     </p>
                     <AssignPartyDialog
                       projectId={id}
@@ -539,7 +661,6 @@ export default function ProjectDetailPage() {
                       <SwipeRow
                         key={summary.projectParty.id}
                         onClick={() => openAssignment("material", summary)}
-                        onEdit={() => toast.info("Edit assignment from party detail")}
                         onDelete={async () => {
                           await softDeleteProjectParty(summary.projectParty.id);
                           await refresh();
@@ -548,23 +669,36 @@ export default function ProjectDetailPage() {
                       >
                         <Avatar name={summary.party.name} size="sm" />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold leading-tight">
-                            {summary.party.name}
-                          </p>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="truncate font-semibold leading-tight">
+                              {summary.party.name}
+                            </p>
+                            <EditAssignmentBudgetDialog
+                              assignmentId={summary.projectParty.id}
+                              currentBudget={summary.projectParty.agreedAmount}
+                              partyName={summary.party.name}
+                              onSuccess={() => {
+                                refresh();
+                                loadData();
+                              }}
+                              trigger={
+                                <button
+                                  type="button"
+                                  className="shrink-0 text-xs font-medium text-primary"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  Budget
+                                </button>
+                              }
+                            />
+                          </div>
                           <p className={typo("caption")}>
                             {summary.projectParty.categoryUsed ?? "Material"}
+                            {summary.hasBudget
+                              ? ` · ${formatCurrency(summary.projectParty.agreedAmount)} budget`
+                              : ""}
                           </p>
-                          <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-sm leading-snug">
-                            <span className="text-subtext">Due </span>
-                            <span className="font-semibold text-warning tabular-nums">
-                              {formatCurrency(summary.dueAmount)}
-                            </span>
-                            <span className="mx-2 text-subtext">·</span>
-                            <span className="text-subtext">Paid </span>
-                            <span className="font-semibold text-success tabular-nums">
-                              {formatCurrency(summary.paidAmount)}
-                            </span>
-                          </div>
+                          <AssignmentAmounts summary={summary} />
                         </div>
                       </SwipeRow>
                     ))}
@@ -586,9 +720,14 @@ export default function ProjectDetailPage() {
         roleLabel={selectedAssignment?.roleLabel ?? ""}
         agreedAmount={selectedAssignment?.agreedAmount ?? 0}
         paidAmount={selectedAssignment?.paidAmount ?? 0}
-        dueAmount={selectedAssignment?.dueAmount ?? 0}
+        dueAmount={selectedAssignment?.dueAmount ?? null}
+        overpaidAmount={selectedAssignment?.overpaidAmount ?? 0}
+        hasBudget={selectedAssignment?.hasBudget ?? false}
         transactions={selectedAssignmentTransactions}
         assignmentType={selectedAssignment?.type ?? "labour"}
+        parties={parties}
+        projects={[project]}
+        onUpdated={loadData}
       />
     </AppScreen>
   );

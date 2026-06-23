@@ -1,12 +1,14 @@
 "use client";
 
 import { format, isToday, isYesterday, parseISO } from "date-fns";
+import type { ReactNode } from "react";
 
 export interface TimelineItem {
   id: string;
   date: string;
   title: string;
   subtitle?: string;
+  action?: ReactNode;
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -47,9 +49,12 @@ export function Timeline({
                   </p>
                 )}
               </div>
-              <p className="shrink-0 pt-0.5 text-right text-sm leading-snug text-subtext">
-                {formatDateLabel(item.date)}
-              </p>
+              <div className="flex shrink-0 flex-col items-end gap-1.5">
+                {item.action}
+                <p className="pt-0.5 text-right text-sm leading-snug text-subtext">
+                  {formatDateLabel(item.date)}
+                </p>
+              </div>
             </div>
           </div>
         ))}

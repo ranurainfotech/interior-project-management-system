@@ -49,11 +49,20 @@ export async function createProjectContact(
   userId: string,
   data: { projectId: string; name: string; phone: string; notes?: string }
 ): Promise<string> {
-  const ref = await addDoc(collection(getClientDb(), COLLECTIONS.projectContacts), {
+  const payload: Record<string, unknown> = {
     userId,
-    ...data,
+    projectId: data.projectId,
+    name: data.name,
+    phone: data.phone,
     ...createFields(),
-  });
+  };
+  const notes = data.notes?.trim();
+  if (notes) payload.notes = notes;
+
+  const ref = await addDoc(
+    collection(getClientDb(), COLLECTIONS.projectContacts),
+    payload
+  );
   void AnalyticsEvents.contactAdded();
   return ref.id;
 }

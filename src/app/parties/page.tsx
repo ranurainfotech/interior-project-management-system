@@ -81,9 +81,19 @@ export default function PartiesPage() {
                   </p>
                   <p className={`mt-1 ${typo("caption")}`}>
                     {party.projectCount} Projects ·{" "}
-                    <span className="font-semibold text-warning">
-                      {formatCurrency(party.totalDue)} Due
-                    </span>
+                    {party.totalOverpaid > 0 ? (
+                      <span className="font-semibold text-danger">
+                        Overpaid {formatCurrency(party.totalOverpaid)}
+                      </span>
+                    ) : party.totalDue > 0 ? (
+                      <span className="font-semibold text-warning">
+                        {formatCurrency(party.totalDue)} Due
+                      </span>
+                    ) : (
+                      <span className="font-semibold text-success">
+                        {formatCurrency(party.totalPaid)} Paid
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>

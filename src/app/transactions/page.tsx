@@ -2,8 +2,6 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useUserData } from "@/lib/data/user-data-context";
-import { getProjectSummary } from "@/lib/calculations";
-import { formatCurrency } from "@/lib/format";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppScreen } from "@/components/layout/app-screen";
 import { PageBody } from "@/components/layout/section";
@@ -15,24 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Timeline, type TimelineItem } from "@/components/ui/timeline";
+import { TransactionTimeline } from "@/components/cards/transaction-timeline";
 import { TRANSACTION_TYPES } from "@/constants";
-import type { Transaction, Party, TransactionType } from "@/types";
-
-function txnTitle(txn: Transaction, partyMap: Map<string, Party>): string {
-  switch (txn.transactionType) {
-    case "client_payment":
-      return `Received ${formatCurrency(txn.amount)} from Client`;
-    case "labour_payment":
-      return `Paid ${formatCurrency(txn.amount)} to ${partyMap.get(txn.partyId ?? "")?.name ?? "labour"}`;
-    case "material_payment":
-      return `Paid ${formatCurrency(txn.amount)} to ${partyMap.get(txn.partyId ?? "")?.name ?? "vendor"}`;
-    case "expense":
-      return `Expense ${formatCurrency(txn.amount)}`;
-    default:
-      return formatCurrency(txn.amount);
-  }
-}
+import type { TransactionType } from "@/types";
 
 export default function TransactionsPage() {
   const { projects, parties, transactions } = useUserData();
@@ -43,15 +26,6 @@ export default function TransactionsPage() {
     const params = new URLSearchParams(window.location.search);
     setFilterProject(params.get("projectId") ?? "all");
   }, []);
-
-  const partyMap = useMemo(
-    () => new Map(parties.map((p) => [p.id, p])),
-    [parties]
-  );
-  const projectMap = useMemo(
-    () => new Map(projects.map((p) => [p.id, p])),
-    [projects]
-  );
 
   const filtered = useMemo(
     () =>
@@ -64,15 +38,6 @@ export default function TransactionsPage() {
       }),
     [transactions, filterProject, filterType]
   );
-
-  const timelineItems: TimelineItem[] = filtered.map((txn) => ({
-    id: txn.id,
-    date: txn.date,
-    title: txnTitle(txn, partyMap),
-    subtitle: [projectMap.get(txn.projectId)?.name, txn.note]
-      .filter(Boolean)
-      .join(" · "),
-  }));
 
   return (
     <AppScreen header={<AppHeader title="Transactions" />}>
@@ -96,7 +61,11 @@ export default function TransactionsPage() {
             onValueChange={(v) => setFilterProject(v ?? "all")}
           >
             <SelectTrigger className="h-12 w-full rounded-2xl bg-card shadow-card md:w-64 md:shrink-0">
-              <SelectValue placeholder="All projects" />
+              <SelectValue placeholder="All projects">
+                {filterProject === "all"
+                  ? undefined
+                  : projects.find((p) => p.id === filterProject)?.name}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All projects</SelectItem>
@@ -110,7 +79,12 @@ export default function TransactionsPage() {
         </div>
 
         <div className="md:mx-auto md:max-w-3xl">
-          <Timeline items={timelineItems} emptyMessage="No transactions yet" />
+          <TransactionTimeline
+            transactions={filtered}
+            parties={parties}
+            projects={projects}
+            emptyMessage="No transactions yet"
+          />
         </div>
       </PageBody>
     </AppScreen>

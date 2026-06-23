@@ -25,7 +25,7 @@ interface UserDataContextValue {
   transactions: Transaction[];
   projectParties: ProjectParty[];
   ready: boolean;
-  refresh: () => Promise<void>;
+  refresh: (options?: { silent?: boolean }) => Promise<void>;
 }
 
 const UserDataContext = createContext<UserDataContextValue | null>(null);
@@ -56,13 +56,15 @@ export function UserDataProvider({ children }: { children: ReactNode }) {
     setReady(true);
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { silent?: boolean }) => {
     if (!user) return;
     const fetchId = ++fetchIdRef.current;
     try {
       await load(user.uid, fetchId);
     } catch (error) {
-      toast.error(getFirestoreErrorMessage(error));
+      if (!options?.silent) {
+        toast.error(getFirestoreErrorMessage(error));
+      }
     }
   }, [user, load]);
 

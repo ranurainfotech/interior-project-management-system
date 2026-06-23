@@ -14,6 +14,12 @@ import { getClientDb } from "@/lib/firebase";
 import { AnalyticsEvents } from "@/lib/tracking";
 import { COLLECTIONS } from "@/constants";
 import type { Project, ProjectStatus } from "@/types";
+import { getProjectContacts, softDeleteProjectContact } from "./contacts";
+import { getProjectParties, softDeleteProjectParty } from "./project-parties";
+import {
+  getProjectTransactions,
+  softDeleteTransaction,
+} from "./transactions";
 import {
   parseSoftDelete,
   softDeleteFields,
@@ -84,9 +90,11 @@ export async function createProject(
   const now = Timestamp.now();
   const ref = await addDoc(collection(getClientDb(), COLLECTIONS.projects), {
     userId,
-    ...data,
+    name: data.name,
+    contractAmount: data.contractAmount,
+    status: data.status,
     ...createFields(),
-    startDate: Timestamp.fromDate(new Date(data.startDate)),
+    startDate: Timestamp.fromDate(new Date(`${data.startDate}T12:00:00`)),
     createdAt: now,
     updatedAt: now,
   });
@@ -113,14 +121,31 @@ export async function updateProject(
   await updateDoc(doc(getClientDb(), COLLECTIONS.projects, id), updateData);
 }
 
-export async function softDeleteProject(id: string): Promise<void> {
-  await updateDoc(doc(getClientDb(), COLLECTIONS.projects, id), {
-    ...softDeleteFields(),
-    updatedAt: Timestamp.now(),
-  });
+export async function softDeleteProject(
+  userId: string,
+  projectId: string
+): Promise<void> {
+  const [projectTransactions, contacts, assignments] = await Promise.all([
+    getProjectTransactions(userId, projectId),
+    getProjectContacts(userId, projectId),
+    getProjectParties(userId, projectId),
+  ]);
+
+  await Promise.all([
+    ...projectTransactions.map((txn) => softDeleteTransaction(txn.id)),
+    ...contacts.map((contact) => softDeleteProjectContact(contact.id)),
+    ...assignments.map((assignment) => softDeleteProjectParty(assignment.id)),
+    updateDoc(doc(getClientDb(), COLLECTIONS.projects, projectId), {
+      ...softDeleteFields(),
+      updatedAt: Timestamp.now(),
+    }),
+  ]);
 }
 
-/** @deprecated Use softDeleteProject */
-export async function deleteProject(id: string): Promise<void> {
-  return softDeleteProject(id);
+/** @deprecated Use softDeleteProject(userId, projectId) */
+export async function deleteProject(
+  userId: string,
+  projectId: string
+): Promise<void> {
+  return softDeleteProject(userId, projectId);
 }

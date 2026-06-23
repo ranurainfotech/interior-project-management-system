@@ -3,19 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { navItems, mainRoutes } from "./nav-items";
+import { navItems, shouldShowBottomNav, getActiveNavHref } from "./nav-items";
 
 export function BottomNav() {
   const pathname = usePathname();
 
-  if (!mainRoutes.has(pathname)) return null;
+  if (!shouldShowBottomNav(pathname)) return null;
+
+  const activeHref = getActiveNavHref(pathname);
 
   return (
     <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 md:hidden">
       <nav className="pointer-events-auto w-full border-t border-border bg-card pb-safe">
         <div className="flex h-[72px] items-stretch justify-around px-1">
             {navItems.map(({ href, label, icon: Icon }) => {
-              const isActive = pathname === href;
+              const isActive = activeHref === href;
               return (
                 <Link
                   key={href}

@@ -4,8 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import { Upload } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useUserData } from "@/lib/data/user-data-context";
+import { useSubmitGuard } from "@/lib/hooks/use-submit-guard";
 import { createTransaction } from "@/lib/firestore/transactions";
 import { Input } from "@/components/ui/input";
+import { AmountInput } from "@/components/ui/amount-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { StickySave } from "@/components/ui/sticky-save";
@@ -16,8 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { TRANSACTION_TYPES } from "@/constants";
+import { TRANSACTION_TYPES, getTransactionTypeLabel } from "@/constants";
 import { toDateInputValue } from "@/lib/format";
+import {
+  parseOptionalAmount,
+  resolveProjectIdForSave,
+} from "@/lib/forms/defaults";
+import { ensurePartyAssignedForTransaction } from "@/lib/forms/ensure-party-assignment";
+import { TransactionPartySelect } from "@/components/forms/transaction-party-select";
 import { toast } from "sonner";
 import type { TransactionType, Project, Party } from "@/types";
 import { cn } from "@/lib/utils";
@@ -41,9 +49,11 @@ export function TransactionForm({
   onSuccess,
 }: TransactionFormProps) {
   const { user } = useAuth();
-  const { projects: cachedProjects, parties: cachedParties, refresh } =
+  const { projects: cachedProjects, parties: cachedParties, projectParties, refresh } =
     useUserData();
+  const { runGuarded, lock } = useSubmitGuard();
   const formRef = useRef<HTMLFormElement>(null);
+  const prevProjectIdRef = useRef(defaultProjectId ?? "");
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<Project[]>(
     projectsProp ?? cachedProjects
@@ -76,15 +86,16 @@ export function TransactionForm({
     if (defaultType) setTransactionType(defaultType);
   }, [defaultType]);
 
+  useEffect(() => {
+    if (prevProjectIdRef.current !== projectId) {
+      setPartyId("");
+      prevProjectIdRef.current = projectId;
+    }
+  }, [projectId]);
+
   const needsParty =
     transactionType === "labour_payment" ||
     transactionType === "material_payment";
-
-  const filteredParties = parties.filter((p) => {
-    if (transactionType === "labour_payment") return p.partyType === "labour";
-    if (transactionType === "material_payment") return p.partyType === "material";
-    return false;
-  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,37 +103,49 @@ export function TransactionForm({
       toast.error("Please sign in again");
       return;
     }
-    if (!projectId) {
-      toast.error("Select a project");
-      return;
-    }
-    if (needsParty && !partyId) {
-      toast.error("Select a party for this payment");
-      return;
-    }
-    const parsedAmount = Number(amount);
-    if (!parsedAmount || parsedAmount <= 0) {
-      toast.error("Enter a valid amount");
-      return;
-    }
-    setLoading(true);
-    try {
-      await createTransaction(user.uid, {
-        projectId,
-        partyId: needsParty ? partyId : undefined,
-        transactionType,
-        amount: parsedAmount,
-        date,
-        note: note.trim() || undefined,
-      });
-      await refresh();
-      toast.success("Transaction recorded");
-      onSuccess?.();
-    } catch (error) {
-      toast.error(getFirestoreErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
+    if (loading) return;
+
+    await runGuarded(async () => {
+      setLoading(true);
+      try {
+        const resolvedProjectId = await resolveProjectIdForSave(
+          user.uid,
+          projectId,
+          projects,
+          refresh
+        );
+        const wasAssigned =
+          needsParty && partyId
+            ? await ensurePartyAssignedForTransaction(
+                user.uid,
+                resolvedProjectId,
+                partyId,
+                transactionType,
+                parties,
+                projectParties
+              )
+            : false;
+        await createTransaction(user.uid, {
+          projectId: resolvedProjectId,
+          partyId: needsParty && partyId ? partyId : undefined,
+          transactionType,
+          amount: parseOptionalAmount(amount),
+          date: date || toDateInputValue(),
+          note: note.trim() || undefined,
+        });
+        await refresh();
+        toast.success(
+          wasAssigned
+            ? "Party assigned and transaction recorded"
+            : "Transaction recorded"
+        );
+        lock();
+        onSuccess?.();
+      } catch (error) {
+        toast.error(getFirestoreErrorMessage(error));
+        setLoading(false);
+      }
+    });
   };
 
   return (
@@ -131,7 +154,7 @@ export function TransactionForm({
         ref={formRef}
         id="transaction-form"
         onSubmit={handleSubmit}
-        className="space-y-4 pb-32"
+        className="space-y-4 pb-[calc(10rem+env(safe-area-inset-bottom,0px))] md:pb-32"
       >
         {defaultProjectId && (
           <div className="rounded-2xl border border-border bg-card px-4 py-3 shadow-card">
@@ -147,10 +170,11 @@ export function TransactionForm({
             <Select
               value={projectId}
               onValueChange={(v) => setProjectId(v ?? "")}
-              required
             >
               <SelectTrigger className={fieldClass}>
-                <SelectValue placeholder="Select project" />
+                <SelectValue placeholder="Select project">
+                  {projects.find((p) => p.id === projectId)?.name}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {projects.map((p) => (
@@ -172,7 +196,9 @@ export function TransactionForm({
             }}
           >
             <SelectTrigger className={fieldClass}>
-              <SelectValue />
+              <SelectValue placeholder="Select type">
+                {getTransactionTypeLabel(transactionType)}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {TRANSACTION_TYPES.map((t) => (
@@ -183,38 +209,24 @@ export function TransactionForm({
             </SelectContent>
           </Select>
         </div>
-        {needsParty && (
-          <div className="space-y-2">
-            <Label>Party</Label>
-            <Select
-              value={partyId}
-              onValueChange={(v) => setPartyId(v ?? "")}
-              required
-            >
-              <SelectTrigger className={fieldClass}>
-                <SelectValue placeholder="Select party" />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredParties.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        {needsParty ? (
+          <TransactionPartySelect
+            projectId={projectId}
+            transactionType={transactionType}
+            partyId={partyId}
+            onPartyIdChange={setPartyId}
+            parties={parties}
+            projectParties={projectParties}
+          />
+        ) : null}
         <div className="space-y-2">
           <Label htmlFor="amount">Amount</Label>
-          <Input
+          <AmountInput
             id="amount"
-            type="number"
-            inputMode="numeric"
             className={cn(fieldClass, "text-lg font-semibold")}
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            required
-            min={1}
+            onValueChange={setAmount}
+            placeholder="0"
           />
         </div>
         <div className="space-y-2">
@@ -225,14 +237,13 @@ export function TransactionForm({
             className={fieldClass}
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            required
           />
         </div>
         <div className="space-y-2">
           <Label htmlFor="note">Note</Label>
           <Textarea
             id="note"
-            placeholder="Optional note"
+            placeholder="Note"
             className="rounded-2xl border-border bg-card shadow-card"
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -248,12 +259,7 @@ export function TransactionForm({
           </label>
         </div>
       </form>
-      <StickySave
-        type="button"
-        loading={loading}
-        label="Save"
-        onClick={() => formRef.current?.requestSubmit()}
-      />
+      <StickySave form="transaction-form" loading={loading} label="Save" />
     </>
   );
 }

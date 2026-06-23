@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useSubmitGuard } from "@/lib/hooks/use-submit-guard";
 import { createProjectContact } from "@/lib/firestore/contacts";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +22,7 @@ interface ContactFormProps {
 
 export function ContactForm({ projectId, onSuccess }: ContactFormProps) {
   const { user } = useAuth();
+  const { runGuarded } = useSubmitGuard();
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -28,45 +30,46 @@ export function ContactForm({ projectId, onSuccess }: ContactFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-    setLoading(true);
-    try {
-      await createProjectContact(user.uid, {
-        projectId,
-        name,
-        phone,
-        notes: notes || undefined,
-      });
-      toast.success("Contact added");
-      setName("");
-      setPhone("");
-      setNotes("");
-      onSuccess?.();
-    } catch {
-      toast.error("Failed to add contact");
-    } finally {
-      setLoading(false);
-    }
+    if (!user || loading) return;
+
+    await runGuarded(async () => {
+      setLoading(true);
+      try {
+        await createProjectContact(user.uid, {
+          projectId,
+          name: name.trim() || "Contact",
+          phone: phone.trim() || "N/A",
+          notes: notes.trim() || undefined,
+        });
+        toast.success("Contact added");
+        setName("");
+        setPhone("");
+        setNotes("");
+        onSuccess?.();
+      } catch {
+        toast.error("Failed to add contact");
+      } finally {
+        setLoading(false);
+      }
+    });
   };
 
   return (
     <form onSubmit={handleSubmit}>
       <FormStack className="px-5 py-5">
-        <FormField label="Name" htmlFor="contact-name" required>
+        <FormField label="Name" htmlFor="contact-name">
           <Input
             id="contact-name"
             className={formInputClass}
             placeholder="Rahul Patel"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            required
           />
         </FormField>
         <FormField
           label="Phone"
           htmlFor="contact-phone"
-          hint="Used for call and WhatsApp shortcuts"
-          required
+          hint="Used for call and WhatsApp shortcuts when provided"
         >
           <Input
             id="contact-phone"
@@ -75,7 +78,6 @@ export function ContactForm({ projectId, onSuccess }: ContactFormProps) {
             placeholder="9999999999"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            required
           />
         </FormField>
         <FormField label="Notes" htmlFor="contact-notes">

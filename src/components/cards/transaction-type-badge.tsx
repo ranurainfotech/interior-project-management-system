@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { TRANSACTION_TYPES } from "@/constants";
+import { getTransactionTypeLabel } from "@/constants";
 import type { TransactionType } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -15,8 +15,7 @@ const typeStyles: Record<TransactionType, string> = {
 };
 
 export function TransactionTypeBadge({ type }: { type: TransactionType }) {
-  const label =
-    TRANSACTION_TYPES.find((t) => t.value === type)?.label ?? type;
+  const label = getTransactionTypeLabel(type) ?? type;
   return (
     <Badge variant="outline" className={cn("font-medium", typeStyles[type])}>
       {label}

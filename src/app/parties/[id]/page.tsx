@@ -10,13 +10,13 @@ import { getParty, softDeleteParty } from "@/lib/firestore/parties";
 import { getPartyProjectHistory } from "@/lib/firestore/project-parties";
 import { getPartyTransactions } from "@/lib/firestore/transactions";
 import { getProjects } from "@/lib/firestore/projects";
-import { getAssignmentPaidAmount, getPartyTotals } from "@/lib/calculations";
+import { getAssignmentPaidAmount, getDueHint, getOverpaid, getPartyTotals } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/format";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppScreen } from "@/components/layout/app-screen";
 import { PageLoading } from "@/components/layout/page-loading";
 import { Avatar } from "@/components/ui/avatar";
-import { Timeline, type TimelineItem } from "@/components/ui/timeline";
+import { TransactionTimeline } from "@/components/cards/transaction-timeline";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,13 +79,6 @@ export default function PartyDetailPage() {
 
   const totals = getPartyTotals(id, history, transactions);
   const projectMap = new Map(projects.map((p) => [p.id, p]));
-
-  const timelineItems: TimelineItem[] = transactions.map((txn) => ({
-    id: txn.id,
-    date: txn.date,
-    title: formatCurrency(txn.amount),
-    subtitle: projectMap.get(txn.projectId)?.name,
-  }));
 
   const menu = (
     <DropdownMenu>
@@ -151,21 +144,21 @@ export default function PartyDetailPage() {
 
         <div className="grid grid-cols-3 gap-4 rounded-[24px] bg-card p-4 shadow-card">
           <div className="text-center">
-            <p className="text-xs text-subtext">Total Assigned</p>
-            <p className="mt-1 text-base font-bold tabular-nums">
-              {formatCurrency(totals.totalAgreed)}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-subtext">Total Paid</p>
+            <p className="text-xs text-subtext">Total paid</p>
             <p className="mt-1 text-base font-bold text-success tabular-nums">
               {formatCurrency(totals.totalPaid)}
             </p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-subtext">Total Due</p>
+            <p className="text-xs text-subtext">Budget due</p>
             <p className="mt-1 text-base font-bold text-warning tabular-nums">
               {formatCurrency(totals.totalDue)}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-subtext">Overpaid</p>
+            <p className="mt-1 text-base font-bold text-danger tabular-nums">
+              {formatCurrency(totals.totalOverpaid)}
             </p>
           </div>
         </div>
@@ -181,7 +174,8 @@ export default function PartyDetailPage() {
                 transactions,
                 pp.type
               );
-              const due = pp.agreedAmount - paid;
+              const due = getDueHint(pp.agreedAmount, paid);
+              const overpaid = getOverpaid(pp.agreedAmount, paid);
               return (
                 <Link key={pp.id} href={`/projects/${pp.projectId}`}>
                   <div className="flex items-center justify-between rounded-[20px] bg-card p-4 shadow-card">
@@ -190,12 +184,18 @@ export default function PartyDetailPage() {
                     </p>
                     <p
                       className={`font-semibold tabular-nums ${
-                        due > 0 ? "text-warning" : "text-success"
+                        overpaid > 0
+                          ? "text-danger"
+                          : due !== null && due > 0
+                            ? "text-warning"
+                            : "text-success"
                       }`}
                     >
-                      {due > 0
-                        ? `${formatCurrency(due)} Due`
-                        : "Fully paid"}
+                      {overpaid > 0
+                        ? `Overpaid ${formatCurrency(overpaid)}`
+                        : due !== null && due > 0
+                          ? `${formatCurrency(due)} Due`
+                          : `${formatCurrency(paid)} Paid`}
                     </p>
                   </div>
                 </Link>
@@ -206,7 +206,16 @@ export default function PartyDetailPage() {
 
         <section>
           <h2 className="mb-4 text-lg font-semibold">Transaction History</h2>
-          <Timeline items={timelineItems} />
+          <TransactionTimeline
+            transactions={transactions}
+            parties={[party]}
+            projects={projects}
+            onUpdated={loadData}
+            titleForTransaction={(txn) => formatCurrency(txn.amount)}
+            subtitleForTransaction={(txn) =>
+              projects.find((p) => p.id === txn.projectId)?.name
+            }
+          />
         </section>
       </div>
     </AppScreen>

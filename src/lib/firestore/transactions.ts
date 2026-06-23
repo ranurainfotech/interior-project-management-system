@@ -9,6 +9,7 @@ import {
   where,
   orderBy,
   Timestamp,
+  deleteField,
 } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase";
 import { AnalyticsEvents } from "@/lib/tracking";
@@ -129,18 +130,41 @@ export async function createTransaction(
 export async function updateTransaction(
   id: string,
   data: Partial<{
+    projectId: string;
     amount: number;
     date: string;
-    note: string;
-    partyId: string;
+    note: string | null;
+    partyId: string | null;
     transactionType: TransactionType;
-    attachmentUrl: string;
+    attachmentUrl: string | null;
   }>
 ): Promise<void> {
-  const updateData: Record<string, unknown> = { ...data };
-  if (data.date) {
-    updateData.date = Timestamp.fromDate(new Date(data.date));
+  const updateData: Record<string, unknown> = {};
+
+  if (data.projectId !== undefined) updateData.projectId = data.projectId;
+  if (data.amount !== undefined) updateData.amount = data.amount;
+  if (data.transactionType !== undefined) {
+    updateData.transactionType = data.transactionType;
   }
+  if (data.date) {
+    updateData.date = Timestamp.fromDate(new Date(`${data.date}T12:00:00`));
+  }
+  if (data.note === null || data.note === "") {
+    updateData.note = deleteField();
+  } else if (data.note !== undefined) {
+    updateData.note = data.note;
+  }
+  if (data.partyId === null) {
+    updateData.partyId = deleteField();
+  } else if (data.partyId !== undefined) {
+    updateData.partyId = data.partyId;
+  }
+  if (data.attachmentUrl === null) {
+    updateData.attachmentUrl = deleteField();
+  } else if (data.attachmentUrl !== undefined) {
+    updateData.attachmentUrl = data.attachmentUrl;
+  }
+
   await updateDoc(doc(getClientDb(), COLLECTIONS.transactions, id), updateData);
 }
 

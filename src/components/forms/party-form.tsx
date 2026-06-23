@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useUserData } from "@/lib/data/user-data-context";
+import { useSubmitGuard } from "@/lib/hooks/use-submit-guard";
 import { createParty } from "@/lib/firestore/parties";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +26,7 @@ const fieldClass = "h-12 rounded-2xl border-border bg-card shadow-card";
 export function PartyForm({ defaultType }: { defaultType?: PartyType }) {
   const { user } = useAuth();
   const { refresh } = useUserData();
+  const { runGuarded, lock } = useSubmitGuard();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [partyType, setPartyType] = useState<PartyType>(defaultType ?? "labour");
@@ -43,25 +45,28 @@ export function PartyForm({ defaultType }: { defaultType?: PartyType }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-    setLoading(true);
-    try {
-      const id = await createParty(user.uid, {
-        partyType,
-        name,
-        phone: phone || undefined,
-        ...(partyType === "labour"
-          ? { skills: selectedItems }
-          : { categories: selectedItems }),
-      });
-      await refresh();
-      toast.success("Party created");
-      router.push(`/parties/${id}`);
-    } catch {
-      toast.error("Failed to create party");
-    } finally {
-      setLoading(false);
-    }
+    if (!user || loading) return;
+
+    await runGuarded(async () => {
+      setLoading(true);
+      try {
+        const id = await createParty(user.uid, {
+          partyType,
+          name: name.trim() || "Unnamed party",
+          phone: phone || undefined,
+          ...(partyType === "labour"
+            ? { skills: selectedItems }
+            : { categories: selectedItems }),
+        });
+        await refresh();
+        toast.success("Party created");
+        lock();
+        router.push(`/parties/${id}`);
+      } catch {
+        toast.error("Failed to create party");
+        setLoading(false);
+      }
+    });
   };
 
   return (
@@ -93,7 +98,6 @@ export function PartyForm({ defaultType }: { defaultType?: PartyType }) {
             placeholder={partyType === "labour" ? "Raju Rastogi" : "ABC Traders"}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            required
           />
         </div>
         <div className="space-y-2">

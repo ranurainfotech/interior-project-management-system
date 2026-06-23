@@ -25,6 +25,6 @@ export interface ProjectHealthItem {
   projectId: string;
   name: string;
   profit: number;
-  clientDue: number;
+  clientDue: number | null;
   contractAmount: number;
 }

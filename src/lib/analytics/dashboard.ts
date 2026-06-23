@@ -130,7 +130,7 @@ export function getOutstandingLabourDues(
 
   const byParty = new Map<string, number>();
   for (const { projectParty, dueAmount } of summaries) {
-    if (dueAmount <= 0) continue;
+    if (dueAmount === null || dueAmount <= 0) continue;
     byParty.set(
       projectParty.partyId,
       (byParty.get(projectParty.partyId) ?? 0) + dueAmount
@@ -222,7 +222,7 @@ export function getOutstandingVendorDues(
 
   const byParty = new Map<string, number>();
   for (const { projectParty, dueAmount } of summaries) {
-    if (dueAmount <= 0) continue;
+    if (dueAmount === null || dueAmount <= 0) continue;
     byParty.set(
       projectParty.partyId,
       (byParty.get(projectParty.partyId) ?? 0) + dueAmount
@@ -300,7 +300,7 @@ export function getOverdueCollections(
       return {
         id: project.id,
         label: project.name,
-        amount: summary.clientDue,
+        amount: summary.clientDue ?? 0,
         href: `/projects/${project.id}`,
       };
     })

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatCurrency } from "@/lib/format";
+import { hasBudget } from "@/lib/calculations";
 import type { ProjectHealthItem } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
@@ -29,14 +30,16 @@ export function ProjectHealthList({ items }: { items: ProjectHealthItem[] }) {
             <div className="min-w-0 flex-1">
               <p className="truncate font-semibold leading-tight">{item.name}</p>
               <p className="mt-0.5 text-xs text-subtext">
-                Contract {formatCurrency(item.contractAmount)}
-                {item.clientDue > 0
-                  ? ` · ${formatCurrency(item.clientDue)} due`
+                {hasBudget(item.contractAmount)
+                  ? `Estimate ${formatCurrency(item.contractAmount)}`
+                  : "Payments tracked"}
+                {item.clientDue !== null && item.clientDue > 0
+                  ? ` · ${formatCurrency(item.clientDue)} pending`
                   : ""}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-subtext">{isLoss ? "Loss" : "Profit"}</p>
+              <p className="text-xs text-subtext">{isLoss ? "Loss" : "Net"}</p>
               <p
                 className={cn(
                   "text-base font-bold tabular-nums",

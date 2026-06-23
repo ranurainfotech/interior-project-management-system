@@ -102,7 +102,7 @@ export default function DashboardPage() {
           const pp = projectParties.filter((x) => x.projectId === project.id);
           const t = txns.filter((x) => x.projectId === project.id);
           const s = getProjectSummary(project, pp, t);
-          return { project, clientDue: s.clientDue, profit: s.profit };
+          return { project, clientDue: s.clientDue, profit: s.profit, paidOut: s.paidOut };
         }),
     [projs, projectParties, txns]
   );
@@ -132,22 +132,22 @@ export default function DashboardPage() {
             <MetricCell
               light
               size="xl"
-              label="Pending from clients"
-              value={formatCurrency(stats.totalReceivable)}
+              label="Collected"
+              value={formatCurrency(stats.totalCollected)}
             />
             <MetricCell
               light
               size="xl"
-              label="Need to pay"
-              value={formatCurrency(stats.totalPayable)}
+              label="Paid out"
+              value={formatCurrency(stats.totalPaidOut)}
             />
             <MetricCell
               light
               size="xl"
-              label="Net position"
-              value={formatCurrency(stats.netPosition)}
+              label="Net cash"
+              value={formatCurrency(stats.netCash)}
               valueClassName={
-                stats.netPosition >= 0 ? "text-white" : "text-red-200"
+                stats.netCash >= 0 ? "text-white" : "text-red-200"
               }
             />
           </div>
@@ -181,6 +181,40 @@ export default function DashboardPage() {
               </div>
             </div>
           </GradientSection>
+
+          {stats.hasEstimates ? (
+            <>
+              <div className="h-px bg-white/15" />
+
+              <GradientSection title="Estimates">
+                <div className="grid grid-cols-3 gap-2 divide-x divide-white/15 md:gap-4">
+                  <MetricCell
+                    light
+                    size="lg"
+                    label="Client pending"
+                    value={formatCurrency(stats.totalReceivable)}
+                    valueClassName="text-amber-200"
+                  />
+                  <MetricCell
+                    light
+                    size="lg"
+                    label="Budget remaining"
+                    value={formatCurrency(stats.totalPayable)}
+                    valueClassName="text-amber-200"
+                  />
+                  <MetricCell
+                    light
+                    size="lg"
+                    label="Overpaid"
+                    value={formatCurrency(stats.totalOverpaid)}
+                    valueClassName={
+                      stats.totalOverpaid > 0 ? "text-red-200" : "text-white"
+                    }
+                  />
+                </div>
+              </GradientSection>
+            </>
+          ) : null}
 
           <div className="h-px bg-white/15" />
 
@@ -229,26 +263,28 @@ export default function DashboardPage() {
           </GradientSection>
         </div>
 
-        <section className="flex flex-col gap-3 rounded-[24px] bg-card p-5 shadow-card">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-foreground">
-              Collection progress
-            </p>
-            <p className="text-sm font-semibold tabular-nums text-primary">
-              {collectionPct}%
-            </p>
-          </div>
-          <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${collectionPct}%` }}
-            />
-          </div>
-          <div className="flex flex-wrap justify-between gap-2 text-xs text-subtext">
-            <span>Collected {formatCurrency(stats.totalRevenue)}</span>
-            <span>Contract {formatCurrency(stats.totalContractValue)}</span>
-          </div>
-        </section>
+        {stats.totalContractValue > 0 ? (
+          <section className="flex flex-col gap-3 rounded-[24px] bg-card p-5 shadow-card">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-foreground">
+                Against current estimate
+              </p>
+              <p className="text-sm font-semibold tabular-nums text-primary">
+                {collectionPct}%
+              </p>
+            </div>
+            <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${collectionPct}%` }}
+              />
+            </div>
+            <div className="flex flex-wrap justify-between gap-2 text-xs text-subtext">
+              <span>Collected {formatCurrency(stats.totalCollected)}</span>
+              <span>Estimate {formatCurrency(stats.totalContractValue)}</span>
+            </div>
+          </section>
+        ) : null}
 
         <section className="flex flex-col gap-4">
           <SectionTitle>Quick Actions</SectionTitle>
@@ -300,15 +336,16 @@ export default function DashboardPage() {
             <p className={typo("caption")}>No active projects</p>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {projectSummaries.map(({ project, clientDue, profit }) => (
+              {projectSummaries.map(({ project, clientDue, profit, paidOut }) => (
                 <ProjectSummaryCard
                   key={project.id}
                   id={project.id}
                   name={project.name}
                   status={project.status}
-                  contractAmount={project.contractAmount}
+                  clientEstimate={project.contractAmount}
                   clientDue={clientDue}
                   profit={profit}
+                  paidOut={paidOut}
                 />
               ))}
             </div>

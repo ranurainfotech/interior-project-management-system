@@ -3,7 +3,6 @@
 import type {
   BreakdownSlice,
   MonthlyCashFlow,
-  ProjectHealthItem,
   RankedItem,
 } from "@/lib/analytics";
 import {
@@ -13,6 +12,7 @@ import {
   getProjectProfitTrend,
   getProjectCollectionPercent,
 } from "@/lib/analytics";
+import { hasBudget } from "@/lib/calculations";
 import type { Party, Project, ProjectParty, Transaction } from "@/types";
 import { SectionTitle } from "@/components/layout/section";
 import { CollectionProgress } from "./collection-progress";
@@ -26,7 +26,9 @@ interface ProjectAnalyticsProps {
   parties: Party[];
   transactions: Transaction[];
   received: number;
-  pending: number;
+  pending: number | null;
+  clientOverpaid?: number;
+  hasClientEstimate?: boolean;
 }
 
 export function ProjectAnalytics({
@@ -36,11 +38,13 @@ export function ProjectAnalytics({
   transactions,
   received,
   pending,
+  clientOverpaid = 0,
+  hasClientEstimate = false,
 }: ProjectAnalyticsProps) {
-  const collectionPercent = getProjectCollectionPercent(
-    project.contractAmount,
-    transactions
-  );
+  const estimateSet = hasClientEstimate && hasBudget(project.contractAmount);
+  const collectionPercent = estimateSet
+    ? getProjectCollectionPercent(project.contractAmount, transactions)
+    : 0;
   const expenseBreakdown: BreakdownSlice[] = getProjectExpenseBreakdown(transactions);
   const labourBreakdown: RankedItem[] = getProjectLabourBreakdown(
     projectParties,
@@ -61,6 +65,8 @@ export function ProjectAnalytics({
         pending={pending}
         contractAmount={project.contractAmount}
         percent={collectionPercent}
+        clientOverpaid={clientOverpaid}
+        hasClientEstimate={hasClientEstimate}
       />
 
       <DonutChart slices={expenseBreakdown} title="Expense breakdown" />

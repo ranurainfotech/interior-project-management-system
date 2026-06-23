@@ -7,10 +7,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Timeline, type TimelineItem } from "@/components/ui/timeline";
+import { TransactionTimeline } from "@/components/cards/transaction-timeline";
 import { formatCurrency } from "@/lib/format";
+import { hasBudget } from "@/lib/calculations";
 import { layout } from "@/lib/design";
-import type { Transaction } from "@/types";
+import type { Transaction, Party, Project } from "@/types";
 
 interface AssignmentTransactionsSheetProps {
   open: boolean;
@@ -19,9 +20,14 @@ interface AssignmentTransactionsSheetProps {
   roleLabel: string;
   agreedAmount: number;
   paidAmount: number;
-  dueAmount: number;
+  dueAmount: number | null;
+  overpaidAmount: number;
+  hasBudget: boolean;
   transactions: Transaction[];
   assignmentType: "labour" | "material";
+  parties: Party[];
+  projects: Project[];
+  onUpdated?: () => void | Promise<void>;
 }
 
 export function AssignmentTransactionsSheet({
@@ -32,16 +38,14 @@ export function AssignmentTransactionsSheet({
   agreedAmount,
   paidAmount,
   dueAmount,
+  overpaidAmount,
+  hasBudget: budgetSet,
   transactions,
   assignmentType,
+  parties,
+  projects,
+  onUpdated,
 }: AssignmentTransactionsSheetProps) {
-  const timelineItems: TimelineItem[] = transactions.map((txn) => ({
-    id: txn.id,
-    date: txn.date,
-    title: `Paid ${formatCurrency(txn.amount)}`,
-    subtitle: txn.note,
-  }));
-
   const paymentLabel =
     assignmentType === "labour" ? "Labour payment" : "Material payment";
 
@@ -58,31 +62,50 @@ export function AssignmentTransactionsSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="grid grid-cols-3 gap-3 border-b border-border px-5 py-4">
-          <div>
-            <p className={layout.label}>Agreed</p>
-            <p className="mt-1 text-sm font-bold tabular-nums">
-              {formatCurrency(agreedAmount)}
-            </p>
-          </div>
+        <div
+          className={`grid gap-3 border-b border-border px-5 py-4 ${
+            budgetSet ? "grid-cols-3" : "grid-cols-2"
+          }`}
+        >
+          {budgetSet && hasBudget(agreedAmount) ? (
+            <div>
+              <p className={layout.label}>Budget</p>
+              <p className="mt-1 text-sm font-bold tabular-nums">
+                {formatCurrency(agreedAmount)}
+              </p>
+            </div>
+          ) : null}
           <div>
             <p className={layout.label}>Paid</p>
             <p className="mt-1 text-sm font-bold tabular-nums text-success">
               {formatCurrency(paidAmount)}
             </p>
           </div>
-          <div>
-            <p className={layout.label}>Due</p>
-            <p className="mt-1 text-sm font-bold tabular-nums text-warning">
-              {formatCurrency(dueAmount)}
-            </p>
-          </div>
+          {budgetSet && dueAmount !== null ? (
+            <div>
+              <p className={layout.label}>Due</p>
+              <p className="mt-1 text-sm font-bold tabular-nums text-warning">
+                {formatCurrency(dueAmount)}
+              </p>
+            </div>
+          ) : null}
         </div>
+
+        {overpaidAmount > 0 ? (
+          <p className="border-b border-border px-5 py-3 text-sm font-semibold text-danger">
+            Overpaid by {formatCurrency(overpaidAmount)}
+          </p>
+        ) : null}
 
         <div className="overflow-y-auto px-5 py-5">
           <p className="mb-4 text-sm font-semibold text-foreground">Payments</p>
-          <Timeline
-            items={timelineItems}
+          <TransactionTimeline
+            transactions={transactions}
+            parties={parties}
+            projects={projects}
+            onUpdated={onUpdated}
+            titleForTransaction={(txn) => `Paid ${formatCurrency(txn.amount)}`}
+            subtitleForTransaction={(txn) => txn.note}
             emptyMessage={`No ${paymentLabel.toLowerCase()}s recorded for this project yet`}
           />
         </div>

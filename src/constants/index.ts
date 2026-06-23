@@ -32,6 +32,15 @@ export const TRANSACTION_TYPES = [
   { value: "expense", label: "Expense" },
 ] as const;
 
+export function getTransactionTypeLabel(
+  value: string | undefined
+): string | undefined {
+  if (!value) return undefined;
+  return (
+    TRANSACTION_TYPES.find((t) => t.value === value)?.label ?? value
+  );
+}
+
 export const PROJECT_STATUSES = [
   { value: "active", label: "Active" },
   { value: "completed", label: "Completed" },

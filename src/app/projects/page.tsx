@@ -2,22 +2,28 @@
 
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import { useAuth } from "@/lib/auth/auth-context";
 import { useUserData } from "@/lib/data/user-data-context";
+import { softDeleteProject } from "@/lib/firestore/projects";
 import { getProjectSummary } from "@/lib/calculations";
+import { getFirestoreErrorMessage } from "@/lib/firebase-errors";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppScreen } from "@/components/layout/app-screen";
 import { PageBody } from "@/components/layout/section";
 import { ProjectSummaryCard } from "@/components/cards/project-summary-card";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 import type { ProjectStatus } from "@/types";
 
 type StatusFilter = "all" | ProjectStatus;
 
 export default function ProjectsPage() {
-  const { projects, projectParties, transactions } = useUserData();
+  const { user } = useAuth();
+  const { projects, projectParties, transactions, refresh } = useUserData();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const projectsWithSummary = useMemo(
     () =>
@@ -29,6 +35,7 @@ export default function ProjectsPage() {
           ...project,
           clientDue: summary.clientDue,
           profit: summary.profit,
+          paidOut: summary.paidOut,
         };
       }),
     [projects, projectParties, transactions]
@@ -42,6 +49,25 @@ export default function ProjectsPage() {
       return true;
     });
   }, [projectsWithSummary, search, statusFilter]);
+
+  const handleDelete = async (projectId: string, projectName: string) => {
+    if (!user) return;
+    const confirmed = window.confirm(
+      `Delete "${projectName}"? Its transactions, contacts, and assignments will also be removed.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(projectId);
+    try {
+      await softDeleteProject(user.uid, projectId);
+      await refresh();
+      toast.success("Project deleted");
+    } catch (error) {
+      toast.error(getFirestoreErrorMessage(error));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <AppScreen header={<AppHeader title="Projects" />}>
@@ -74,9 +100,12 @@ export default function ProjectsPage() {
               id={project.id}
               name={project.name}
               status={project.status}
-              contractAmount={project.contractAmount}
+              clientEstimate={project.contractAmount}
               clientDue={project.clientDue}
               profit={project.profit}
+              paidOut={project.paidOut}
+              deleting={deletingId === project.id}
+              onDelete={() => handleDelete(project.id, project.name)}
             />
           ))}
         </div>
