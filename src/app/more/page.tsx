@@ -11,6 +11,7 @@ import { LogOut, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { BRAND } from "@/lib/brand";
 import { layout, typo } from "@/lib/design";
+import { DeleteAllDataSection } from "@/components/forms/delete-all-data-section";
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
@@ -47,6 +48,8 @@ export default function ProfilePage() {
             <ExternalLink className="h-4 w-4 shrink-0 text-subtext" />
           </a>
         </div>
+
+        <DeleteAllDataSection />
 
         <Button
           variant="destructive"
