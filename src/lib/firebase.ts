@@ -15,10 +15,14 @@ const firebaseConfig = {
 
 let app: FirebaseApp | undefined;
 
+export function isFirebaseConfigured(): boolean {
+  return Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
+}
+
 export function getFirebaseApp(): FirebaseApp {
-  if (!firebaseConfig.apiKey) {
+  if (!isFirebaseConfigured()) {
     throw new Error(
-      "Firebase is not configured. Copy .env.example to .env.local and add your credentials."
+      "Firebase is not configured. Add NEXT_PUBLIC_FIREBASE_* variables in Vercel and redeploy."
     );
   }
   if (!app) {

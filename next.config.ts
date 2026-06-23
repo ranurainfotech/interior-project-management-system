@@ -3,8 +3,10 @@ import withPWAInit from "@ducanh2912/next-pwa";
 
 const withPWA = withPWAInit({
   dest: "public",
-  disable: process.env.NODE_ENV === "development",
-  register: true,
+  // PWA service workers break Next.js App Router navigation on Vercel when
+  // the start URL / auth redirects are cached. Re-enable once SW rules are tuned.
+  disable: true,
+  register: false,
 });
 
 const nextConfig: NextConfig = {

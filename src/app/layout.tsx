@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/lib/auth/auth-context";
 import { AppShell } from "@/components/layout/app-shell";
+import { FirebaseGate } from "@/components/layout/firebase-gate";
 import { AnalyticsProvider } from "@/components/tracking/analytics-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { BRAND } from "@/lib/brand";
@@ -47,12 +48,14 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${geistMono.variable} h-full`}>
       <body className="min-h-full flex flex-col font-sans">
-        <AuthProvider>
-          <AnalyticsProvider>
-            <AppShell>{children}</AppShell>
-          </AnalyticsProvider>
-          <Toaster position="top-right" richColors closeButton />
-        </AuthProvider>
+        <FirebaseGate>
+          <AuthProvider>
+            <AnalyticsProvider>
+              <AppShell>{children}</AppShell>
+            </AnalyticsProvider>
+            <Toaster position="top-right" richColors closeButton />
+          </AuthProvider>
+        </FirebaseGate>
       </body>
     </html>
   );

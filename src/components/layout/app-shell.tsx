@@ -8,7 +8,7 @@ import { BottomNav } from "./bottom-nav";
 import { GlobalFab } from "./global-fab";
 import { PageLoading } from "./page-loading";
 
-const publicPaths = ["/login"];
+const publicPaths = ["/login", "/signup"];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -22,8 +22,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     else if (user && isPublicPath) router.replace("/dashboard");
   }, [user, loading, isPublicPath, router]);
 
-  if (loading) return <PageLoading fullScreen />;
+  if (loading && !isPublicPath) return <PageLoading fullScreen />;
   if (isPublicPath) return <>{children}</>;
+  if (loading) return <PageLoading fullScreen />;
   if (!user) return null;
 
   return (

@@ -13,7 +13,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { getClientAuth } from "@/lib/firebase";
+import { getClientAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { AnalyticsEvents } from "@/lib/tracking";
 
 interface AuthContextValue {
@@ -30,12 +30,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const auth = getClientAuth();
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
+    if (!isFirebaseConfigured()) {
       setLoading(false);
-    });
-    return unsubscribe;
+      return;
+    }
+
+    let unsubscribe: (() => void) | undefined;
+
+    try {
+      const auth = getClientAuth();
+      unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+        setUser(firebaseUser);
+        setLoading(false);
+      });
+    } catch {
+      setLoading(false);
+    }
+
+    return () => unsubscribe?.();
   }, []);
 
   const signIn = async (email: string, password: string) => {
