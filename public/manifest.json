@@ -1,0 +1,17 @@
+{
+  "name": "Abhyantar Designs — Project Finance",
+  "short_name": "Abhyantar",
+  "description": "Interior project finance for Abhyantar Designs",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#F3F6FC",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "/brand/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
